@@ -5,6 +5,7 @@ use Illuminate\Console\Command;
 use Illuminate\Contracts\Foundation\Application;
 use Illuminate\Filesystem\Filesystem;
 use Illuminate\Support\Collection;
+use Symfony\Component\Console\Output\OutputInterface;
 
 class UpdateCountriesCommand extends Command
 {
@@ -66,7 +67,11 @@ class UpdateCountriesCommand extends Command
         $this->loader = new FileLoader($files, dirname(__DIR__).'/data');
 
         $config = $app->make('config');
-        $this->countries = $config->get('countries');
+        $this->countries = $config->get('countries.countries');
+
+        if (!$this->files->isDirectory(dirname(storage_path(self::INSTALL_HISTORY)))) {
+            $this->files->makeDirectory(dirname(storage_path(self::INSTALL_HISTORY)), 0755, true);
+        }
 
         if ($this->files->exists(storage_path(self::INSTALL_HISTORY))) {
             $this->hash = $this->files->get(storage_path(self::INSTALL_HISTORY));
@@ -80,8 +85,6 @@ class UpdateCountriesCommand extends Command
      */
     public function handle()
     {
-        $countries = $this->files->files($this->path);
-
         $countries = [];
 
         $data = $this->loader->load('en');
@@ -93,19 +96,20 @@ class UpdateCountriesCommand extends Command
         }
 
         $countries = Collection::make($countries);
+
         $hash = md5($countries->toJson());
 
         if ($hash === $this->hash) {
+            $this->line("No new country.");
             return false;
         }
-
-        $countryCodes = $countries->pluck('code');
 
         $countryCodes = $countries->pluck('code')->unique();
 
         $existingCountryIDs = Collection::make(
             DB::table($this->countries)->whereIn('code', $countryCodes)->pluck('id', 'code')
         );
+
         $countries->map(
             function ($item) use ($existingCountryIDs) {
                 if ($existingCountryIDs->has($item['code'])) {
@@ -128,14 +132,17 @@ class UpdateCountriesCommand extends Command
                 $update = Collection::make($countries->get('update'));
 
                 foreach ($create->chunk(static::QUERY_LIMIT) as $entries) {
-                    DB::table($this->countries)->insert($entries);
+                    DB::table($this->countries)->insert($entries->toArray());
                 }
 
                 foreach ($update->chunk(static::QUERY_LIMIT) as $entries) {
-                    DB::table($this->countries)->update($entries);
+                    DB::table($this->countries)->update($entries->toArray());
                 }
+                $this->line("{$create->count()} countries created. {$update->count()} countries updated.");
                 $this->files->put(storage_path(static::INSTALL_HISTORY), $hash);
             }
         );
+
+        return true;
     }
 }
