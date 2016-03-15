@@ -16,7 +16,7 @@ class UpdateCountriesCommand extends Command
      *
      * @var string
      */
-    protected $signature = 'countries:update';
+    protected $signature = 'countries:update {--f|force : Force update}';
 
     /**
      * The console command description.
@@ -99,7 +99,7 @@ class UpdateCountriesCommand extends Command
 
         $hash = md5($countries->toJson());
 
-        if ($hash === $this->hash) {
+        if (!$this->option('force') && $hash === $this->hash) {
             $this->line("No new country.");
             return false;
         }
@@ -110,38 +110,32 @@ class UpdateCountriesCommand extends Command
             DB::table($this->countries)->whereIn('code', $countryCodes)->pluck('id', 'code')
         );
 
-        $countries->map(
-            function ($item) use ($existingCountryIDs) {
-                if ($existingCountryIDs->has($item['code'])) {
-                    $item['id'] = $existingCountryIDs->get($item['code']);
-                }
-
-                return $item;
+        $countries = $countries->map(function ($item) use ($existingCountryIDs) {
+            if ($existingCountryIDs->has($item['code'])) {
+                $item['id'] = $existingCountryIDs->get($item['code']);
             }
-        );
 
-        $countries = $countries->groupBy(
-            function ($item) {
-                return array_has($item, 'id') ? 'update' : 'create';
+            return $item;
+        });
+
+        $countries = $countries->groupBy(function ($item) {
+            return array_has($item, 'id') ? 'update' : 'create';
+        });
+
+        DB::transaction(function () use ($countries, $hash) {
+            $create = $countries->get('create', Collection::make());
+            $update = $countries->get('update', Collection::make());
+
+            foreach ($create->chunk(static::QUERY_LIMIT) as $entries) {
+                DB::table($this->countries)->insert($entries->toArray());
             }
-        );
 
-        DB::transaction(
-            function () use ($countries, $hash) {
-                $create = Collection::make($countries->get('create'));
-                $update = Collection::make($countries->get('update'));
-
-                foreach ($create->chunk(static::QUERY_LIMIT) as $entries) {
-                    DB::table($this->countries)->insert($entries->toArray());
-                }
-
-                foreach ($update->chunk(static::QUERY_LIMIT) as $entries) {
-                    DB::table($this->countries)->update($entries->toArray());
-                }
-                $this->line("{$create->count()} countries created. {$update->count()} countries updated.");
-                $this->files->put(storage_path(static::INSTALL_HISTORY), $hash);
+            foreach ($update as $entries) {
+                DB::table($this->countries)->where('id', $entries['id'])->update($entries);
             }
-        );
+            $this->line("{$create->count()} countries created. {$update->count()} countries updated.");
+            $this->files->put(storage_path(static::INSTALL_HISTORY), $hash);
+        });
 
         return true;
     }
