@@ -1,0 +1,33 @@
+{
+  "name": "znck/countries",
+  "description": "A list of countries.",
+  "license": "MIT",
+  "authors": [
+    {
+      "name": "Rahul Kadyan",
+      "email": "hi@znck.me"
+    }
+  ],
+  "require": {
+    "php": "^7.0",
+    "symfony/translation": "^3.0",
+    "illuminate/console": "^5.2",
+    "illuminate/database": "^5.2",
+    "illuminate/support": "^5.2"
+  },
+  "require-dev": {
+    "fabpot/php-cs-fixer": "^1.11",
+    "phpunit/phpunit": "^5.2",
+    "illuminate/filesystem": "^5.2"
+  },
+  "autoload": {
+    "psr-4": {
+      "Znck\\Countries\\": "src/"
+    }
+  },
+  "autoload-dev": {
+    "psr-4": {
+      "Znck\\Tests\\Countries\\": "tests/"
+    }
+  }
+}
